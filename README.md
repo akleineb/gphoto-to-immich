@@ -2,6 +2,8 @@
 
 A simple Python script that migrates your Google Photos Takeout data to Immich. The tool is vibe coded and designed to efficiently process large amounts of images and videos.
 
+> ⚠️ **DISCLAIMER**: This tool is provided as-is without any warranty. Use at your own risk. Always backup your data before running the migration. The authors are not responsible for any data loss or damage.
+
 ## What the tool does
 
 The script goes through your Google Photos Takeout data (unpacked) and:

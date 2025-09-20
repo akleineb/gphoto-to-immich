@@ -11,21 +11,23 @@ YELLOW = \033[1;33m
 RED = \033[0;31m
 NC = \033[0m # No Color
 
-.PHONY: help install analyze run
+.PHONY: help install analyze run run-verbose
 
 help: ## Show available commands
 	@echo "$(GREEN)Google Photos to Immich Migration$(NC)"
 	@echo "=================================="
 	@echo ""
 	@echo "$(YELLOW)Available Commands:$(NC)"
-	@echo "  install    - Install Python dependencies"
-	@echo "  analyze    - Analyze the sample files"
-	@echo "  run        - Start the migration"
+	@echo "  install       - Install Python dependencies"
+	@echo "  analyze       - Analyze the sample files"
+	@echo "  run           - Start the migration (quiet mode)"
+	@echo "  run-verbose   - Start the migration with detailed logging"
 	@echo ""
 	@echo "$(YELLOW)Usage:$(NC)"
 	@echo "  make install"
 	@echo "  make analyze"
 	@echo "  make run"
+	@echo "  make run-verbose"
 	@echo ""
 	@echo "$(YELLOW)With custom values:$(NC)"
 	@echo "  IMMICH_URL=\"http://192.168.1.100:2283\" make run"
@@ -64,3 +66,22 @@ run: ## Start the migration
 		exit 1; \
 	fi
 	python3 gphoto_to_immich.py --takeout-path "$$TAKEOUT_PATH" --immich-url "$$IMMICH_URL" --api-key "$$IMMICH_API_KEY"
+
+run-verbose: ## Start the migration with detailed logging
+	@echo "$(GREEN)🚀 Starting migration with verbose logging...$(NC)"
+	@if [ -z "$$IMMICH_API_KEY" ]; then \
+		echo "$(RED)❌ IMMICH_API_KEY is not set!$(NC)"; \
+		echo "Use: IMMICH_API_KEY=\"your-api-key\" make run-verbose"; \
+		exit 1; \
+	fi
+	@if [ -z "$$IMMICH_URL" ]; then \
+		echo "$(RED)❌ IMMICH_URL is not set!$(NC)"; \
+		echo "Use: IMMICH_URL=\"http://your-server:port\" make run-verbose"; \
+		exit 1; \
+	fi
+	@if [ -z "$$TAKEOUT_PATH" ]; then \
+		echo "$(RED)❌ TAKEOUT_PATH is not set!$(NC)"; \
+		echo "Use: TAKEOUT_PATH=\"/path/to/takeout\" make run-verbose"; \
+		exit 1; \
+	fi
+	python3 gphoto_to_immich.py --takeout-path "$$TAKEOUT_PATH" --immich-url "$$IMMICH_URL" --api-key "$$IMMICH_API_KEY" --verbose

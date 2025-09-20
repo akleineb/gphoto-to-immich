@@ -42,6 +42,7 @@ class Config:
     retry_attempts: int = 3
     timeout: int = 300
     dry_run: bool = False
+    verbose: bool = False
 
 
 # Logging Setup
@@ -132,9 +133,6 @@ class ImmichClient:
             # Prepare files for upload
             files = {'assetData': open(file_path, 'rb')}
             
-            # Debug: Log request details
-            logger.info(f"Uploading {file_path.name} with deviceAssetId: {upload_data['deviceAssetId']}")
-            
             # Upload asset
             response = self.session.post(
                 f"{self.config.immich_url}/api/assets",
@@ -146,43 +144,49 @@ class ImmichClient:
             
             files['assetData'].close()
             
-            # Debug: Log response details
-            if response.status_code not in [200, 201]:
-                logger.error(f"Upload failed: {response.status_code} - {response.text}")
+            # Logging based on verbosity level
+            if self.config.verbose:
+                logger.info(f"Uploading {file_path.name} with deviceAssetId: {upload_data['deviceAssetId']}")
+                if response.status_code not in [200, 201]:
+                    logger.error(f"Upload failed: {response.status_code} - {response.text}")
             
             if response.status_code in [200, 201]:
                 asset_data = response.json()
                 asset_id = asset_data['id']
                 
                 # Check if it's a duplicate
-                if response.status_code == 200 and asset_data.get('status') == 'duplicate':
-                    logger.info(f"Asset already exists (duplicate): {file_path} -> {asset_id}")
-                    # Check and update metadata for duplicates
-                    metadata_updated = self._check_and_update_metadata(asset_id, metadata)
-                    if metadata_updated:
-                        if hasattr(self, '_processor') and hasattr(self._processor, 'stats'):
-                            self._processor.stats['metadata_updates'] += 1
-                    else:
-                        if hasattr(self, '_processor') and hasattr(self._processor, 'stats'):
-                            self._processor.stats['metadata_already_correct'] += 1
+                is_duplicate = response.status_code == 200 and asset_data.get('status') == 'duplicate'
+                
+                # Check and update metadata
+                metadata_updated = self._check_and_update_metadata(asset_id, metadata)
+                if metadata_updated:
+                    if hasattr(self, '_processor') and hasattr(self._processor, 'stats'):
+                        self._processor.stats['metadata_updates'] += 1
                 else:
-                    logger.info(f"Asset successfully uploaded: {file_path} -> {asset_id}")
-                    # Check and update metadata for new uploads
-                    metadata_updated = self._check_and_update_metadata(asset_id, metadata)
-                    if metadata_updated:
-                        if hasattr(self, '_processor') and hasattr(self._processor, 'stats'):
-                            self._processor.stats['metadata_updates'] += 1
-                    else:
-                        if hasattr(self, '_processor') and hasattr(self._processor, 'stats'):
-                            self._processor.stats['metadata_already_correct'] += 1
+                    if hasattr(self, '_processor') and hasattr(self._processor, 'stats'):
+                        self._processor.stats['metadata_already_correct'] += 1
                 
                 # Add to album if present
+                album_added = False
                 if album_title:
-                    self._add_to_album(asset_id, album_title)
+                    album_added = self._add_to_album(asset_id, album_title)
+                
+                # Single line logging for non-verbose mode
+                if not self.config.verbose:
+                    status = "🔄" if is_duplicate else "✅"
+                    metadata_status = "📝" if metadata_updated else ""
+                    album_status = "📁" if album_added else ""
+                    logger.info(f"{status} {file_path.name} {metadata_status} {album_status}")
+                else:
+                    # Verbose logging (existing detailed logs)
+                    if is_duplicate:
+                        logger.info(f"Asset already exists (duplicate): {file_path} -> {asset_id}")
+                    else:
+                        logger.info(f"Asset successfully uploaded: {file_path} -> {asset_id}")
                 
                 return {
                     'asset_id': asset_id,
-                    'is_duplicate': response.status_code == 200 and asset_data.get('status') == 'duplicate',
+                    'is_duplicate': is_duplicate,
                     'metadata_updated': metadata_updated
                 }
             else:
@@ -228,19 +232,22 @@ class ImmichClient:
                 current_exif_date = asset_info.get('exifInfo', {}).get('dateTimeOriginal')
                 current_file_created = asset_info.get('fileCreatedAt')
                 
-                logger.info(f"Asset {asset_id}: Expected date: {expected_created_at}")
-                logger.info(f"Asset {asset_id}: Current EXIF date: {current_exif_date}")
-                logger.info(f"Asset {asset_id}: Current fileCreatedAt: {current_file_created}")
+                if self.config.verbose:
+                    logger.info(f"Asset {asset_id}: Expected date: {expected_created_at}")
+                    logger.info(f"Asset {asset_id}: Current EXIF date: {current_exif_date}")
+                    logger.info(f"Asset {asset_id}: Current fileCreatedAt: {current_file_created}")
                 
                 # Check if EXIF date needs to be updated
                 if current_exif_date != expected_created_at:
-                    logger.info(f"Asset {asset_id}: EXIF date differs - update required")
+                    if self.config.verbose:
+                        logger.info(f"Asset {asset_id}: EXIF date differs - update required")
                     update_data['dateTimeOriginal'] = expected_created_at
                     needs_update = True
                 
                 # Check if fileCreatedAt needs to be updated
                 if current_file_created != expected_created_at:
-                    logger.info(f"Asset {asset_id}: fileCreatedAt differs - update required")
+                    if self.config.verbose:
+                        logger.info(f"Asset {asset_id}: fileCreatedAt differs - update required")
                     # For fileCreatedAt we use dateTimeOriginal (this is the correct parameter)
                     if 'dateTimeOriginal' not in update_data:
                         update_data['dateTimeOriginal'] = expected_created_at
@@ -255,25 +262,29 @@ class ImmichClient:
                 expected_lat = geo_data.get('latitude')
                 expected_lon = geo_data.get('longitude')
                 
-                logger.info(f"Asset {asset_id}: Expected geo data: {expected_lat}, {expected_lon}")
-                logger.info(f"Asset {asset_id}: Current geo data: {current_lat}, {current_lon}")
+                if self.config.verbose:
+                    logger.info(f"Asset {asset_id}: Expected geo data: {expected_lat}, {expected_lon}")
+                    logger.info(f"Asset {asset_id}: Current geo data: {current_lat}, {current_lon}")
                 
                 # Check if geo data is missing or differs
                 if (current_lat is None or current_lon is None or 
                     abs(current_lat - expected_lat) > 0.0001 or 
                     abs(current_lon - expected_lon) > 0.0001):
-                    logger.info(f"Asset {asset_id}: Geo data differs or missing - update required")
+                    if self.config.verbose:
+                        logger.info(f"Asset {asset_id}: Geo data differs or missing - update required")
                     update_data['latitude'] = expected_lat
                     update_data['longitude'] = expected_lon
                     needs_update = True
             
             # Perform update if required
             if needs_update:
-                logger.info(f"Asset {asset_id}: Updating metadata with: {update_data}")
+                if self.config.verbose:
+                    logger.info(f"Asset {asset_id}: Updating metadata with: {update_data}")
                 self._update_asset_metadata(update_data)
                 return True
             else:
-                logger.info(f"Asset {asset_id}: Metadata is already correct")
+                if self.config.verbose:
+                    logger.info(f"Asset {asset_id}: Metadata is already correct")
                 return False
                 
         except Exception as e:
@@ -290,19 +301,25 @@ class ImmichClient:
             )
             
             if response.status_code == 204:
-                logger.info(f"Asset metadata successfully updated for Asset {update_data['ids'][0]}")
+                if self.config.verbose:
+                    logger.info(f"Asset metadata successfully updated for Asset {update_data['ids'][0]}")
             else:
-                logger.warning(f"Asset metadata update failed: {response.status_code} - {response.text}")
+                if self.config.verbose:
+                    logger.warning(f"Asset metadata update failed: {response.status_code} - {response.text}")
                 
         except Exception as e:
             logger.warning(f"Error updating asset metadata: {e}")
     
-    def _add_to_album(self, asset_id: str, album_title: str):
-        """Add asset to album"""
+    def _add_to_album(self, asset_id: str, album_title: str) -> bool:
+        """Add asset to album
+        
+        Returns:
+            bool: True if successfully added, False otherwise
+        """
         try:
             album_id = self._get_or_create_album(album_title)
             if not album_id:
-                return
+                return False
             
             response = self.session.put(
                 f"{self.config.immich_url}/api/albums/{album_id}/assets",
@@ -311,23 +328,30 @@ class ImmichClient:
             )
             
             if response.status_code == 200:
-                logger.info(f"Asset {asset_id} successfully added to album {album_title}")
-                # Write to separate asset-album assignment log
-                asset_album_logger.info(f"Asset added to album: Asset {asset_id} -> Album '{album_title}'")
+                if self.config.verbose:
+                    logger.info(f"Asset {asset_id} successfully added to album {album_title}")
+                    # Write to separate asset-album assignment log
+                    asset_album_logger.info(f"Asset added to album: Asset {asset_id} -> Album '{album_title}'")
+                return True
             else:
-                logger.warning(f"Asset {asset_id} could not be added to album {album_title}: {response.status_code} - {response.text}")
-                # Log failed assignment as well
-                asset_album_logger.warning(f"ERROR: Asset {asset_id} could not be added to album '{album_title}': {response.status_code} - {response.text}")
+                if self.config.verbose:
+                    logger.warning(f"Asset {asset_id} could not be added to album {album_title}: {response.status_code} - {response.text}")
+                    # Log failed assignment as well
+                    asset_album_logger.warning(f"ERROR: Asset {asset_id} could not be added to album '{album_title}': {response.status_code} - {response.text}")
+                return False
                 
         except Exception as e:
-            logger.warning(f"Error adding asset {asset_id} to album {album_title}: {e}")
+            if self.config.verbose:
+                logger.warning(f"Error adding asset {asset_id} to album {album_title}: {e}")
+            return False
     
     def _get_or_create_album(self, album_title: str) -> str:
         """Get album ID from cache or create new album (thread-safe)"""
         # First check if album is already in cache
         if album_title in self._album_cache:
             # Album already exists - log it
-            album_creation_logger.info(f"Album already exists: '{album_title}' (ID: {self._album_cache[album_title]})")
+            if self.config.verbose:
+                album_creation_logger.info(f"Album already exists: '{album_title}' (ID: {self._album_cache[album_title]})")
             # Update statistics (only once per album)
             if not hasattr(self, '_album_stats_tracked'):
                 self._album_stats_tracked = set()
@@ -348,7 +372,8 @@ class ImmichClient:
         with self._album_creation_lock:
             # Check again (Double-Checked Locking Pattern)
             if album_title in self._album_cache:
-                album_creation_logger.info(f"Album already exists (after lock): '{album_title}' (ID: {self._album_cache[album_title]})")
+                if self.config.verbose:
+                    album_creation_logger.info(f"Album already exists (after lock): '{album_title}' (ID: {self._album_cache[album_title]})")
                 return self._album_cache[album_title]
             
             try:
@@ -448,6 +473,9 @@ class GooglePhotosProcessor:
         
         logger.info(f"Found: {len(media_files)} media files")
         
+        if self.config.verbose:
+            logger.info(f"Processing with {self.config.max_workers} workers, batch size: {self.config.batch_size}")
+        
         if not media_files:
             logger.warning("No media files found!")
             return
@@ -521,7 +549,8 @@ class GooglePhotosProcessor:
                 batch = media_files[i:i + self.config.batch_size]
                 batch_num = i // self.config.batch_size + 1
                 
-                logger.info(f"Processing batch {batch_num}/{total_batches}")
+                if self.config.verbose:
+                    logger.info(f"Processing batch {batch_num}/{total_batches}")
                 
                 # Submit batch tasks
                 future_to_file = {
@@ -695,7 +724,9 @@ def main():
     parser.add_argument('--batch-size', type=int, default=100, 
                        help='Batch size for processing')
     parser.add_argument('--timeout', type=int, default=300, 
-                       help='Timeout for HTTP requests in seconds')
+                        help='Timeout for HTTP requests in seconds')
+    parser.add_argument('--verbose', action='store_true',
+                        help='Enable verbose logging')
     
     args = parser.parse_args()
     
@@ -707,7 +738,8 @@ def main():
         max_workers=args.max_workers,
         batch_size=args.batch_size,
         timeout=args.timeout,
-        dry_run=False
+        dry_run=False,
+        verbose=args.verbose
     )
     
     # Validation
