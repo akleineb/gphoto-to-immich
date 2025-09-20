@@ -37,9 +37,8 @@ make run
 
 ## What you need
 
-- **Immich Server**: A running Immich server
 - **API-Key**: With permissions for `asset.read`, `asset.update`, `asset.upload`, `album.create`, `album.read`, `album.update`, `albumAsset.create`
-- **Google Photos Takeout**: Your exported Google Photos data
+- **Google Photos Takeout**: Your exported Google Photos data (unzipped). Point the tool to the folder containing all the extracted files.
 
 ## Supported file formats
 
@@ -99,9 +98,6 @@ The script creates three log files:
 ```
 
 ## Common problems
-
-**HEIC images not displaying:** This is normal - Immich needs to generate thumbnails first. Go to Settings → Jobs and start "Generate Thumbnails".
-
 **API errors:** Check if your API key has the correct permissions.
 
 **Slow uploads:** The script uses 10 parallel workers. For very large collections, you can adjust this in `gphoto_to_immich.py`.
@@ -111,7 +107,3 @@ The script creates three log files:
 - **Dependencies:** Only `requests` and `urllib3`
 - **Performance:** Efficiently processes 50,000+ files
 - **Thread-safe:** Multiple workers without conflicts
-
-## License
-
-MIT License
