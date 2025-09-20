@@ -1,0 +1,4 @@
+.cursor/
+examples/*
+*.log
+.DS_Store
