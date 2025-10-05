@@ -528,11 +528,8 @@ class GooglePhotosProcessor:
     
     def _find_metadata_file(self, file_path: Path) -> Optional[Path]:
         """Find metadata file for a media file"""
-        pattern = f"*{file_path.name}*.json"
-        
-        # Iterate over matching files
-        for metadata_path in file_path.parent.glob(pattern):
-            # print(metadata_path)
+        metadata_pattern = f"*{file_path.name}*.json"
+        for metadata_path in file_path.parent.glob(metadata_pattern):
             if metadata_path.is_file():
                 return metadata_path
         
