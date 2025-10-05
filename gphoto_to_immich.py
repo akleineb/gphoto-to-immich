@@ -124,7 +124,7 @@ class ImmichClient:
                 'filename': file_path.name,
                 'deviceAssetId': f"gphoto_1",
                 'deviceId': 'gphoto-migration-tool',
-                'metadata': [{'key': 'mobile-app', 'value': {'source': 'gphoto-import'}}]
+                'metadata': json.dumps([{'key': 'mobile-app', 'value': {'source': 'gphoto-import'}}])
             }
             
             # Add checksum header
@@ -528,14 +528,9 @@ class GooglePhotosProcessor:
     
     def _find_metadata_file(self, file_path: Path) -> Optional[Path]:
         """Find metadata file for a media file"""
-        possible_names = [
-            f"{file_path.name}.supplemental-metadata.json",
-            f"{file_path.name}.supplemental-metadata copy.json"
-        ]
-        
-        for name in possible_names:
-            metadata_path = file_path.parent / name
-            if metadata_path.exists():
+        metadata_pattern = f"*{file_path.name}*.json"
+        for metadata_path in file_path.parent.glob(metadata_pattern):
+            if metadata_path.is_file():
                 return metadata_path
         
         return None
